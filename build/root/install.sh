@@ -3,12 +3,8 @@
 # exit script if return code != 0
 set -e
 
-# construct yesterdays date (cannot use todays as archive wont exist) and set url for archive
-yesterdays_date=$(date -d "yesterday" +%Y/%m/%d)
-
 # now set pacman to use snapshot for packages for yesterdays date
-echo 'Server = https://archive.archlinux.org/repos/'"${yesterdays_date}"'/$repo/os/$arch' > /etc/pacman.d/mirrorlist
-echo 'Server = http://archive.virtapi.org/repos/'"${yesterdays_date}"'/$repo/os/$arch' >> /etc/pacman.d/mirrorlist
+echo 'Server = http://mirror.archlinuxarm.org/$arch/$repo' > /etc/pacman.d/mirrorlist
 
 echo "[info] content of arch mirrorlist file"
 cat /etc/pacman.d/mirrorlist
@@ -16,19 +12,12 @@ cat /etc/pacman.d/mirrorlist
 # reset gpg (not required when source is bootstrap tarball, but keeping for historic reasons)
 rm -rf /etc/pacman.d/gnupg/ /root/.gnupg/ || true
 
-# dns resolution reconfigure is required due to the tarball extraction
-# overwriting the /etc/resolv.conf, thus we then need to fix this up
-# before we can continue to build the image.
-echo "[info] Setting DNS resolvers to Cloudflare..."
-echo "nameserver 1.1.1.1" > /etc/resolv.conf || true
-echo "nameserver 1.0.0.1" >> /etc/resolv.conf || true
-
 # refresh gpg keys
 gpg --refresh-keys
 
 # initialise key for pacman and populate keys 
-pacman-key --init && pacman-key --populate archlinux
-
+pacman-key --init && pacman-key --populate archlinuxarm
+pacman -Sy archlinuxarm-keyring  --noconfirm
 # force use of protocol http and ipv4 only for keyserver (defaults to hkp)
 echo "no-greeting" > /etc/pacman.d/gnupg/gpg.conf
 echo "no-permission-warning" >> /etc/pacman.d/gnupg/gpg.conf
@@ -125,15 +114,15 @@ usermod -d /home/nobody nobody
 chsh -s /bin/bash nobody
  
 # force re-install of ncurses 6.x with 5.x backwards compatibility (can be removed once all apps have switched over to ncurses 6.x)
-curl --connect-timeout 5 --max-time 600 --retry 5 --retry-delay 0 --retry-max-time 60 -o /tmp/ncurses5-compat.tar.xz -L https://github.com/binhex/arch-packages/raw/master/compiled/ncurses5-compat-libs-x86_64.pkg.tar.xz
-pacman -U /tmp/ncurses5-compat.tar.xz --noconfirm
+#curl --connect-timeout 5 --max-time 600 --retry 5 --retry-delay 0 --retry-max-time 60 -o /tmp/ncurses5-compat.tar.xz -L https://github.com/binhex/arch-packages/raw/master/compiled/ncurses5-compat-libs-x86_64.pkg.tar.xz
+#pacman -U /tmp/ncurses5-compat.tar.xz --noconfirm
 
 # find latest tini release tag from github
 curl --connect-timeout 5 --max-time 600 --retry 5 --retry-delay 0 --retry-max-time 60 -o /tmp/tini_release_tag -L https://github.com/krallin/tini/releases
 tini_release_tag=$(cat /tmp/tini_release_tag | grep -P -o -m 1 '(?<=/krallin/tini/releases/tag/)[^"]+')
 
 # download tini, used to do graceful exit when docker stop issued and correct reaping of zombie processes.
-curl --connect-timeout 5 --max-time 600 --retry 5 --retry-delay 0 --retry-max-time 60 -o /usr/bin/tini -L "https://github.com/krallin/tini/releases/download/${tini_release_tag}/tini-amd64" && chmod +x /usr/bin/tini
+curl --connect-timeout 5 --max-time 600 --retry 5 --retry-delay 0 --retry-max-time 60 -o /usr/bin/tini -L "https://github.com/krallin/tini/releases/download/${tini_release_tag}/tini-armhf" && chmod +x /usr/bin/tini
 
 # identify if base-devel package installed
 if pacman -Qg "base-devel" > /dev/null ; then
