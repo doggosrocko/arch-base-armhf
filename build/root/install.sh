@@ -7,10 +7,17 @@ set -e
 echo 'Server = http://mirror.archlinuxarm.org/$arch/$repo' > /etc/pacman.d/mirrorlist
 
 echo "[info] content of arch mirrorlist file"
-cat /etc/pacman.d/mirrorlist
+cat '/etc/pacman.d/mirrorlist'
 
 # reset gpg (not required when source is bootstrap tarball, but keeping for historic reasons)
-rm -rf /etc/pacman.d/gnupg/ /root/.gnupg/ || true
+rm -rf '/etc/pacman.d/gnupg/' '/root/.gnupg/' || true
+
+# dns resolution reconfigure is required due to the tarball extraction
+# overwriting the /etc/resolv.conf, thus we then need to fix this up
+# before we can continue to build the image.
+echo "[info] Setting DNS resolvers to Cloudflare..."
+echo "nameserver 1.1.1.1" > '/etc/resolv.conf' || true
+echo "nameserver 1.0.0.1" >> '/etc/resolv.conf' || true
 
 # refresh gpg keys
 gpg --refresh-keys
@@ -19,11 +26,11 @@ gpg --refresh-keys
 pacman-key --init && pacman-key --populate archlinuxarm
 pacman -Sy archlinuxarm-keyring  --noconfirm
 # force use of protocol http and ipv4 only for keyserver (defaults to hkp)
-echo "no-greeting" > /etc/pacman.d/gnupg/gpg.conf
-echo "no-permission-warning" >> /etc/pacman.d/gnupg/gpg.conf
-echo "lock-never" >> /etc/pacman.d/gnupg/gpg.conf
-echo "keyserver hkp://ipv4.pool.sks-keyservers.net" >> /etc/pacman.d/gnupg/gpg.conf
-echo "keyserver-options timeout=10" >> /etc/pacman.d/gnupg/gpg.conf
+echo "no-greeting" > '/etc/pacman.d/gnupg/gpg.conf'
+echo "no-permission-warning" >> '/etc/pacman.d/gnupg/gpg.conf'
+echo "lock-never" >> '/etc/pacman.d/gnupg/gpg.conf'
+echo "keyserver hkp://ipv4.pool.sks-keyservers.net" >> '/etc/pacman.d/gnupg/gpg.conf'
+echo "keyserver-options timeout=10" >> '/etc/pacman.d/gnupg/gpg.conf'
 
 # perform pacman refresh with retries (required as keyservers are unreliable)
 count=0
@@ -44,7 +51,7 @@ sed -i '\~\[options\]~a # Do not extract the following folders from any packages
 'NoExtract   = usr/share/doc*\n'\
 'NoExtract   = usr/share/man*\n'\
 'NoExtract   = usr/share/gtk-doc*\n' \
-/etc/pacman.conf
+'/etc/pacman.conf'
 
 # list all packages that we want to exclude/remove
 unneeded_packages="\
@@ -92,9 +99,9 @@ echo "[info] Install base group and additional packages..."
 pacman -S base awk sed grep gzip supervisor nano vi ldns moreutils net-tools dos2unix unzip unrar htop jq openssl-1.0 --noconfirm
 
 echo "[info] set locale..."
-echo en_GB.UTF-8 UTF-8 > /etc/locale.gen
+echo en_GB.UTF-8 UTF-8 > '/etc/locale.gen'
 locale-gen
-echo LANG="en_GB.UTF-8" > /etc/locale.conf
+echo LANG="en_GB.UTF-8" > '/etc/locale.conf'
 
 # add user "nobody" to primary group "users" (will remove any other group membership)
 usermod -g users nobody
@@ -103,9 +110,9 @@ usermod -g users nobody
 usermod -a -G nobody nobody
 
 # setup env for user nobody
-mkdir -p /home/nobody
-chown -R nobody:users /home/nobody
-chmod -R 775 /home/nobody
+mkdir -p '/home/nobody'
+chown -R nobody:users '/home/nobody'
+chmod -R 775 '/home/nobody'
 
 # set user "nobody" home directory (needs defining for pycharm, and possibly other apps)
 usermod -d /home/nobody nobody
@@ -113,12 +120,23 @@ usermod -d /home/nobody nobody
 # set shell for user nobody
 chsh -s /bin/bash nobody
  
+# delme once fixed!!
+# force downgrade of coreutils - fixes permission denied issue when building on docker hub
+# https://github.com/archlinux/archlinux-docker/issues/32
+curl --connect-timeout 5 --max-time 600 --retry 5 --retry-delay 0 --retry-max-time 60 -o /tmp/coreutils.tar.xz -L "https://github.com/binhex/arch-packages/raw/master/compiled/x86-64/coreutils.tar.xz"
+pacman -U '/tmp/coreutils.tar.xz' --noconfirm
+
+# add coreutils to pacman ignore list to prevent it being upgraded
+sed -i -e 's~#IgnorePkg.*~IgnorePkg = coreutils~g' '/etc/pacman.conf'
+# /delme once fixed!!
+
 # force re-install of ncurses 6.x with 5.x backwards compatibility (can be removed once all apps have switched over to ncurses 6.x)
-#curl --connect-timeout 5 --max-time 600 --retry 5 --retry-delay 0 --retry-max-time 60 -o /tmp/ncurses5-compat.tar.xz -L https://github.com/binhex/arch-packages/raw/master/compiled/ncurses5-compat-libs-x86_64.pkg.tar.xz
 #pacman -U /tmp/ncurses5-compat.tar.xz --noconfirm
+# curl --connect-timeout 5 --max-time 600 --retry 5 --retry-delay 0 --retry-max-time 60 -o /tmp/ncurses5-compat.tar.xz -L "https://github.com/binhex/arch-packages/raw/master/compiled/x86-64/ncurses5-compat-libs.tar.xz"
+# pacman -U '/tmp/ncurses5-compat.tar.xz' --noconfirm
 
 # find latest tini release tag from github
-curl --connect-timeout 5 --max-time 600 --retry 5 --retry-delay 0 --retry-max-time 60 -o /tmp/tini_release_tag -L https://github.com/krallin/tini/releases
+curl --connect-timeout 5 --max-time 600 --retry 5 --retry-delay 0 --retry-max-time 60 -o /tmp/tini_release_tag -L "https://github.com/krallin/tini/releases"
 tini_release_tag=$(cat /tmp/tini_release_tag | grep -P -o -m 1 '(?<=/krallin/tini/releases/tag/)[^"]+')
 
 # download tini, used to do graceful exit when docker stop issued and correct reaping of zombie processes.
@@ -132,15 +150,26 @@ if pacman -Qg "base-devel" > /dev/null ; then
 
 fi
 
+# remove any build tools that maybe present from the build
+pacman -Ru dotnet-sdk yarn git yay-bin reflector gcc binutils --noconfirm 2> /dev/null || true
+
 # general cleanup
 yes|pacman -Scc
 pacman --noconfirm -Rns $(pacman -Qtdq) 2> /dev/null || true
-rm -rf /usr/share/locale/*
-rm -rf /usr/share/man/*
-rm -rf /usr/share/gtk-doc/*
-rm -rf /tmp/*
+rm -rf /var/cache/* \
+/var/empty/.cache/* \
+/usr/share/locale/* \
+/usr/share/man/* \
+/usr/share/gtk-doc/* \
+/tmp/*
 
 # additional cleanup for base only
-rm -rf /root/*
-rm -rf /var/cache/pacman/pkg/*
-rm -rf /README
+rm -rf /root/* \
+/var/cache/pacman/pkg/* \
+/usr/lib/firmware \
+/usr/lib/modules \
+/.dockerenv \
+/.dockerinit \
+/usr/share/info/* \
+/README \
+/bootstrap

@@ -21,6 +21,7 @@ RUN ["docker-build-start"]
 # run bash script to update base image, set locale, install supervisor and cleanup
 RUN chmod +x /root/*.sh && \
 	/bin/bash /root/install.sh
+
 # env
 #####
 
